@@ -16,8 +16,3 @@ git clone https://github.com/your-username/hefes-space-defenders.git
 ```
 
 ## Running
-Open `public/index.html` in a web browser
-
-## Assets
-- Sprites: PNG files in `/sprites`
-- Audio: WAV/MP3 files in `/sounds`

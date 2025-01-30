@@ -111,7 +111,7 @@
             bgMusic.loop = true;
             bgMusic.volume = 0.25; // 25% volume for background music
             
-            const laserSound = new Audio('/sounds/Lazer sound 1.wav');
+            const laserSound = new Audio('./sounds/Lazer sound 1.wav');
             laserSound.volume = 0.1; // 10% volume for laser sound
             
             // Start music on first user interaction
@@ -154,11 +154,11 @@
             
             // Use paths relative to server root
             const spritePaths = {
-                player: '/sprites/hefeship.png',
-                alien1: '/sprites/alien1.png',
-                alien2: '/sprites/alien2.png',
-                alien3: '/sprites/alien3.png',
-                alien4: '/sprites/alien4.png'
+                player: './sprites/hefeship.png',
+                alien1: './sprites/alien1.png',
+                alien2: './sprites/alien2.png',
+                alien3: './sprites/alien3.png',
+                alien4: './sprites/alien4.png'
             };
 
             // Log current directory for debugging
