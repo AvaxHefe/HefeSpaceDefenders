@@ -1,0 +1,15 @@
+# OS/Editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Node modules (in case they add JS dependencies later)
+node_modules/
+
+# Local development files
+.env
+.env.local
+
+# Logs
+*.log
