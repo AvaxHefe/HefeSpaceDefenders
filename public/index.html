@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hefe's Space Defenders</title>
+    <style>
+        body {
+            margin: 0;
+            background: #1a1a1a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: Arial, sans-serif;
+            color: white;
+            position: relative;
+        }
+        #startButton {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 15px 30px;
+            font-size: 24px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 10;
+        }
+        #startButton:hover {
+            background: #0056b3;
+        }
+        #gameCanvas {
+            border: 2px solid #444;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        @font-face {
+            font-family: 'Press Start 2P';
+            src: url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        }
+        #scoreDisplay {
+            font-family: 'Press Start 2P', monospace;
+            font-size: 20px;
+            margin: 20px 0;
+            padding: 15px 25px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #00ff00;
+            border-radius: 5px;
+            color: #00ff00;
+            text-shadow: 0 0 5px #00ff00;
+            box-shadow: 0 0 10px #00ff00;
+        }
+    </style>
+</head>
+<body>
+    <div id="scoreDisplay">Wave: 1 | Score: 0 | High Score: 0</div>
+    <canvas id="gameCanvas"></canvas>
+    <button id="startButton">Start Game</button>
+    <script>
+        // Wait for all content to load
+        window.addEventListener('load', () => {
+            console.log('Window loaded');
+            
+            const canvas = document.getElementById('gameCanvas');
+            if (!canvas) {
+                console.error('Canvas element not found');
+                return;
+            }
+            console.log('Canvas found');
+
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                console.error('Failed to get canvas context');
+                return;
+            }
+            console.log('Canvas context obtained');
+
+            const scoreDisplay = document.getElementById('scoreDisplay');
+            if (!scoreDisplay) {
+                console.error('Score display element not found');
+                return;
+            }
+            console.log('Score display found');
+
+            // Set fixed canvas size for consistent gameplay
+            canvas.width = 800;  // Fixed width
+            canvas.height = 600; // Fixed height
+            console.log(`Canvas size set to ${canvas.width}x${canvas.height}`);
+
+            // Game state
+            let score = 0;
+            let highScore = localStorage.getItem('highScore') || 0;
+            let gameLoop;
+            let aliens = [];
+            let bullets = [];
+            let waveStartTime = 0;
+            let isShowingWaveText = false;
+            
+            // Game constants
+            const ALIEN_WIDTH = 50;
+            const ALIEN_HEIGHT = 50;
+            const ALIEN_PADDING = 20;
+            const BASE_MOVE_AMOUNT = 2; // Base movement speed
+            let MOVE_AMOUNT = BASE_MOVE_AMOUNT;
+            let waveCount = 0;
+            
+            // Audio setup
+            const bgMusic = new Audio('sounds/backgroundmusic.mp3');
+            bgMusic.loop = true;
+            bgMusic.volume = 0.25; // 25% volume for background music
+            
+            const laserSound = new Audio('/sounds/Lazer sound 1.wav');
+            laserSound.volume = 0.1; // 10% volume for laser sound
+            
+            // Start music on first user interaction
+            document.addEventListener('click', () => {
+                if (bgMusic.paused) {
+                    bgMusic.play().catch(e => console.error('Failed to play music:', e));
+                }
+            }, { once: true });
+            
+            // Game constants
+            const PLAYER_WIDTH = 80;  // Bigger ship
+            const PLAYER_HEIGHT = 80;
+            const STARTING_LIVES = 5;  // Start with 5 lives
+            const LIFE_ICON_SIZE = 30; // Size of life icons
+            
+            let player = {
+                x: canvas.width / 2,
+                y: canvas.height - PLAYER_HEIGHT,
+                width: PLAYER_WIDTH,
+                height: PLAYER_HEIGHT,
+                speed: 5,
+                isMovingLeft: false,
+                isMovingRight: false,
+                lives: STARTING_LIVES
+            };
+
+            console.log('Starting sprite loading...');
+            
+            // Load sprites
+            const sprites = {
+                player: new Image(),
+                alien1: new Image(),
+                alien2: new Image(),
+                alien3: new Image(),
+                alien4: new Image()
+            };
+
+            // Set sprite paths and handlers
+            console.log('Setting sprite sources...');
+            
+            // Use paths relative to server root
+            const spritePaths = {
+                player: '/sprites/hefeship.png',
+                alien1: '/sprites/alien1.png',
+                alien2: '/sprites/alien2.png',
+                alien3: '/sprites/alien3.png',
+                alien4: '/sprites/alien4.png'
+            };
+
+            // Log current directory for debugging
+            console.log('Document location:', window.location.href);
+            console.log('Document path:', window.location.pathname);
+
+            // Log the current page URL for debugging
+            console.log('Current page URL:', window.location.href);
+            console.log('Loading sprites from paths:', spritePaths);
+
+            // Set up sprite loading with detailed error handling
+            Object.entries(spritePaths).forEach(([key, path]) => {
+                sprites[key].onerror = (e) => {
+                    console.error(`Failed to load ${key} sprite:`, {
+                        path,
+                        absolutePath: new URL(path, window.location.href).href,
+                        error: e
+                    });
+                };
+                sprites[key].onload = () => {
+                    console.log(`Successfully loaded ${key} sprite:`, {
+                        path,
+                        dimensions: {
+                            width: sprites[key].width,
+                            height: sprites[key].height
+                        }
+                    });
+                };
+                console.log(`Loading sprite ${key} from:`, path);
+                sprites[key].src = path;
+            });
+
+            // Create promises for sprite loading
+            const spriteLoadPromises = Object.entries(sprites).map(([key, sprite]) =>
+                new Promise((resolve, reject) => {
+                    sprite.onload = () => {
+                        console.log(`${key} sprite loaded successfully`);
+                        resolve();
+                    };
+                    sprite.onerror = () => reject(`Failed to load ${key} sprite`);
+                })
+            );
+
+            const startButton = document.getElementById('startButton');
+            
+            // Wait for all sprites to load
+            Promise.all(spriteLoadPromises)
+                .then(() => {
+                    // Verify all sprites have proper dimensions
+                    const spriteErrors = [];
+                    Object.entries(sprites).forEach(([key, sprite]) => {
+                        if (!sprite.complete || !sprite.width || !sprite.height) {
+                            spriteErrors.push(`${key}: incomplete or no dimensions`);
+                        }
+                    });
+
+                    if (spriteErrors.length > 0) {
+                        throw new Error('Sprite validation failed: ' + spriteErrors.join(', '));
+                    }
+
+                    console.log('All sprites loaded and validated successfully');
+                    
+                    // Wait for start button click
+                    startButton.addEventListener('click', () => {
+                        // Reset game state
+                        startButton.style.display = 'none';
+                        score = 0;
+                        waveCount = 1;
+                        MOVE_AMOUNT = BASE_MOVE_AMOUNT;
+                        aliens = [];
+                        bullets = [];
+                        player.x = canvas.width / 2;
+                        player.lives = STARTING_LIVES;
+                        isShowingWaveText = false;
+                        waveStartTime = 0;
+                        
+                        // Update display
+                        scoreDisplay.textContent = `Wave: ${waveCount} | Score: 0 | High Score: ${highScore}`;
+                        startGame();
+                    });
+                })
+                .catch(error => {
+                    console.error('Failed to load sprites:', error);
+                    // Display error on canvas
+                    ctx.fillStyle = '#ff0000';
+                    ctx.font = '20px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('Failed to load game resources', canvas.width/2, canvas.height/2);
+                });
+
+            function startGame() {
+                console.log('Starting game initialization');
+                
+                // Verify sprites are loaded
+                if (!sprites.player.complete || !sprites.alien1.complete || !sprites.alien2.complete) {
+                    console.error('Sprites not fully loaded');
+                    return;
+                }
+                
+                spawnAliens();
+                console.log('Aliens spawned');
+                setupControls();
+                console.log('Controls set up');
+                console.log('Starting game loop');
+                gameLoop = requestAnimationFrame(update);
+            }
+
+            function spawnAliens() {
+                console.log('Spawning aliens');
+                const rows = 2;
+                const cols = 12;  // More columns to fill width
+                const verticalPadding = ALIEN_HEIGHT;  // Space between rows equal to alien height
+                
+                // Calculate formation dimensions with more space for movement
+                const formationWidth = canvas.width - (8 * ALIEN_PADDING);  // More padding for wider movement
+                const spacing = formationWidth / (cols - 1);  // Space between alien centers
+                
+                // Center the formation horizontally, start higher up
+                const startX = (canvas.width - formationWidth) / 2;
+                const startY = ALIEN_PADDING * 3;  // Start higher up
+                
+                console.log('Formation bounds:', {
+                    left: startX,
+                    right: startX + formationWidth,
+                    availableWidth: canvas.width,
+                    spacing
+                });
+
+                console.log('Formation setup:', {
+                    canvas: {
+                        width: canvas.width,
+                        height: canvas.height
+                    },
+                    formation: {
+                        width: formationWidth,
+                        spacing,
+                        startX,
+                        startY,
+                        rows,
+                        cols
+                    },
+                    alien: {
+                        width: ALIEN_WIDTH,
+                        height: ALIEN_HEIGHT,
+                        padding: ALIEN_PADDING
+                    }
+                });
+
+                for (let row = 0; row < rows; row++) {
+                    for (let col = 0; col < cols; col++) {
+                        const x = startX + col * spacing;
+                        const y = startY + row * (ALIEN_HEIGHT + verticalPadding);
+
+                        // Ensure alien is within bounds
+                        if (x >= ALIEN_PADDING && x <= canvas.width - ALIEN_PADDING) {
+                            aliens.push({
+                                x: x,
+                                y,
+                                width: ALIEN_WIDTH,
+                                height: ALIEN_HEIGHT,
+                                type: 'alien' + Math.ceil(Math.random() * 4), // Random alien type 1-4
+                                direction: 1,
+                                speed: MOVE_AMOUNT
+                            });
+                        }
+                    }
+                }
+            }
+
+            function setupControls() {
+                document.addEventListener('keydown', e => {
+                    if (e.key === 'ArrowLeft') player.isMovingLeft = true;
+                    if (e.key === 'ArrowRight') player.isMovingRight = true;
+                    if (e.key === ' ') shoot();
+                });
+
+                document.addEventListener('keyup', e => {
+                    if (e.key === 'ArrowLeft') player.isMovingLeft = false;
+                    if (e.key === 'ArrowRight') player.isMovingRight = false;
+                });
+            }
+
+            function shoot() {
+                // Play laser sound
+                laserSound.currentTime = 0; // Reset sound to start
+                laserSound.play().catch(e => console.error('Failed to play laser sound:', e));
+                
+                bullets.push({
+                    x: player.x,
+                    y: player.y - 20,
+                    width: 4,
+                    height: 20,
+                    speed: 7
+                });
+            }
+
+            let frameCount = 0;
+            function update() {
+                if (!ctx) {
+                    console.error('Canvas context lost');
+                    return;
+                }
+
+                frameCount++;
+                if (frameCount === 1) {
+                    console.log('First frame running');
+                } else if (frameCount % 60 === 0) { // Log every second (assuming 60fps)
+                    console.log('Game state:', {
+                        frame: frameCount,
+                        aliens: aliens.length,
+                        firstAlienPos: aliens[0] ? {
+                            x: aliens[0].x,
+                            y: aliens[0].y,
+                            direction: aliens[0].direction
+                        } : null
+                    });
+                }
+
+                // Clear canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Draw life icons at top-left
+                for (let i = 0; i < player.lives; i++) {
+                    ctx.drawImage(
+                        sprites.player,
+                        10 + (i * (LIFE_ICON_SIZE + 5)), // Space icons 5px apart
+                        10,
+                        LIFE_ICON_SIZE,
+                        LIFE_ICON_SIZE
+                    );
+                }
+
+                // Update player
+                console.log('Drawing at:', player.x, player.y);
+                if (player.isMovingLeft && player.x > player.width/2) {
+                    player.x -= player.speed;
+                }
+                if (player.isMovingRight && player.x < canvas.width - player.width/2) {
+                    player.x += player.speed;
+                }
+
+                // Draw player
+                ctx.drawImage(
+                    sprites.player,
+                    player.x - player.width/2,
+                    player.y - player.height/2,
+                    player.width,
+                    player.height
+                );
+
+                // Update and draw bullets
+                bullets = bullets.filter(bullet => {
+                    bullet.y -= bullet.speed;
+                    ctx.fillStyle = '#ff0000';
+                    ctx.fillRect(bullet.x - bullet.width/2, bullet.y, bullet.width, bullet.height);
+                    return bullet.y > 0;
+                });
+
+                // Update and draw aliens
+                const leftBound = ALIEN_PADDING + ALIEN_WIDTH/2;
+                const rightBound = canvas.width - ALIEN_PADDING - ALIEN_WIDTH/2;
+                const bottomBound = canvas.height - ALIEN_PADDING - ALIEN_HEIGHT/2;
+                
+                // Check if any aliens would hit boundaries
+                let needsDirectionChange = false;
+                aliens.forEach(alien => {
+                    const nextX = alien.x + (alien.direction * MOVE_AMOUNT);
+                    if (nextX < leftBound || nextX > rightBound) {
+                        needsDirectionChange = true;
+                    }
+                });
+
+                // Update alien positions
+                aliens.forEach(alien => {
+                    if (needsDirectionChange) {
+                        alien.direction *= -1;
+                        alien.y += ALIEN_HEIGHT/4; // Move down by quarter height
+                    }
+                    
+                    // Calculate new position
+                    let newX = alien.x + (alien.direction * MOVE_AMOUNT);
+                    
+                    // Keep within bounds
+                    newX = Math.max(leftBound, Math.min(rightBound, newX));
+                    alien.x = newX;
+                });
+
+                // Draw aliens
+                aliens.forEach(alien => {
+                    const sprite = sprites[alien.type];
+                    if (sprite && sprite.complete) {
+                        ctx.drawImage(
+                            sprite,
+                            alien.x - alien.width/2,
+                            alien.y - alien.height/2,
+                            alien.width,
+                            alien.height
+                        );
+                    }
+                });
+
+                // Check if any aliens have reached the bottom and handle lives
+                const aliensAtBottom = aliens.filter(alien => alien.y > bottomBound);
+                if (aliensAtBottom.length > 0) {
+                    // Remove aliens that reached bottom and lose a life for each one
+                    aliens = aliens.filter(alien => alien.y <= bottomBound);
+                    player.lives -= aliensAtBottom.length;
+                    console.log(`Lost a life! Lives remaining: ${player.lives}`);
+                    
+                    // Update score display
+                    scoreDisplay.textContent = `Wave: ${waveCount} | Score: ${score} | High Score: ${highScore}`;
+                    
+                    if (player.lives <= 0) {
+                        // Game over
+                        cancelAnimationFrame(gameLoop);
+                        aliens = [];
+                        bullets = [];
+                        
+                        // Show game over screen with arcade style
+                        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        
+                        // Game Over text with glow effect
+                        ctx.font = '48px "Press Start 2P"';
+                        ctx.textAlign = 'center';
+                        ctx.shadowBlur = 20;
+                        ctx.shadowColor = '#ff0000';
+                        ctx.fillStyle = '#ff0000';
+                        ctx.fillText('GAME OVER', canvas.width/2, canvas.height/2 - 50);
+                        
+                        // Score with different color
+                        ctx.font = '24px "Press Start 2P"';
+                        ctx.shadowBlur = 10;
+                        ctx.shadowColor = '#00ff00';
+                        ctx.fillStyle = '#00ff00';
+                        ctx.fillText(`FINAL SCORE: ${score}`, canvas.width/2, canvas.height/2 + 20);
+                        
+                        // Reset shadow
+                        ctx.shadowBlur = 0;
+                        
+                        // Show restart button
+                        startButton.textContent = 'Play Again';
+                        startButton.style.display = 'block';
+                        return; // Stop game loop
+                    }
+                    
+                    // If no aliens left (all reached bottom), spawn new wave
+                    if (aliens.length === 0 && player.lives > 0) {
+                        spawnAliens();
+                    }
+                }
+
+                // Check collisions - iterate backwards to safely remove elements
+                for (let i = bullets.length - 1; i >= 0; i--) {
+                    const bullet = bullets[i];
+                    let bulletHit = false;
+                    
+                    for (let j = aliens.length - 1; j >= 0; j--) {
+                        const alien = aliens[j];
+                        
+                        // Only check collisions for aliens on screen
+                        if (alien.x < 0 || alien.x > canvas.width ||
+                            alien.y < 0 || alien.y > canvas.height) {
+                            continue;
+                        }
+                        
+                        if (bullet.x > alien.x - alien.width/2 &&
+                            bullet.x < alien.x + alien.width/2 &&
+                            bullet.y > alien.y - alien.height/2 &&
+                            bullet.y < alien.y + alien.height/2) {
+                            
+                            console.log('Hit alien at:', alien.x, alien.y);
+                            aliens.splice(j, 1);
+                            bulletHit = true;
+                            score += 10;
+                            if (score > highScore) {
+                                highScore = score;
+                                localStorage.setItem('highScore', highScore);
+                            }
+                            scoreDisplay.textContent = `Wave: ${waveCount} | Score: ${score} | High Score: ${highScore}`;
+                            break;  // Exit inner loop since bullet is used
+                        }
+                    }
+                    
+                    if (bulletHit) {
+                        bullets.splice(i, 1);
+                    }
+                }
+
+                // Handle wave transitions
+                if (aliens.length === 0) {
+                    if (!isShowingWaveText) {
+                        // Start new wave
+                        waveCount++;
+                        MOVE_AMOUNT = BASE_MOVE_AMOUNT + (waveCount * 0.5);
+                        waveStartTime = Date.now();
+                        isShowingWaveText = true;
+                        scoreDisplay.textContent = `Wave: ${waveCount} | Score: ${score} | High Score: ${highScore}`;
+                    } else if (Date.now() - waveStartTime > 1500) {
+                        // After delay, spawn aliens
+                        isShowingWaveText = false;
+                        spawnAliens();
+                    } else {
+                        // Show wave announcement
+                        ctx.font = '36px "Press Start 2P"';
+                        ctx.textAlign = 'center';
+                        ctx.shadowBlur = 15;
+                        ctx.shadowColor = '#00ff00';
+                        ctx.fillStyle = '#00ff00';
+                        ctx.fillText(`WAVE ${waveCount}`, canvas.width/2, canvas.height/2);
+                        ctx.shadowBlur = 0;
+                    }
+                }
+
+                gameLoop = requestAnimationFrame(update);
+            }
+        });
+    </script>
+</body>
+</html>

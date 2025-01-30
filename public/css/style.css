@@ -1,0 +1,23 @@
+body {
+  margin: 0;
+  background: #1a1a1a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-family: 'Arial', sans-serif;
+}
+
+#gameCanvas {
+  border: 2px solid #444;
+  border-radius: 8px;
+  margin-top: 20px;
+}
+
+#scoreDisplay {
+  color: #fff;
+  font-size: 24px;
+  margin: 20px 0;
+  padding: 10px 20px;
+  background: #333;
+  border-radius: 5px;
+}
